@@ -1,0 +1,73 @@
+name: Test Execution and Report
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install Playwright
+        run: mvn exec:java -e -D exec.mainClass=com.microsoft.playwright.CLI -D exec.args="install chromium"
+
+      - name: Run Tests
+        run: mvn clean test
+
+      - name: Get Allure history
+        uses: actions/checkout@v3
+        if: always()
+        continue-on-error: true
+        with:
+          ref: gh-pages
+          path: gh-pages
+
+      - name: Generate Allure Report
+        uses: simple-elf/allure-report-action@master
+        if: always()
+        with:
+          allure_results: target/allure-results
+          gh_pages: gh-pages
+          allure_report: allure-report
+
+      - name: Deploy report to Github Pages
+        if: always()
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: allure-report
+
+      - name: Send notification to Teams
+        if: always()
+        uses: aliencube/microsoft-teams-actions@v0.8.0
+        with:
+          webhook_uri: ${{ secrets.TEAMS_WEBHOOK }}
+          title: "Test Execution Report"
+          summary: "Test execution completed"
+          sections: |
+            [{
+              "activityTitle": "Automation Test Results",
+              "activitySubtitle": "Report is available",
+              "facts": [
+                {
+                  "name": "Status",
+                  "value": "${{ job.status }}"
+                },
+                {
+                  "name": "Report URL",
+                  "value": "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+                }
+              ]
+            }]
